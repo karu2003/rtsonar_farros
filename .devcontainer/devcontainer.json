@@ -1,0 +1,78 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/python
+{
+	"name": "signal-processing",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	// "image": "mcr.microsoft.com/devcontainers/python:0-3.11"
+	"build": { "dockerfile": "Dockerfile",
+			   "context": ".."
+			 },
+	
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {
+	// 	"ghcr.io/devcontainers/features/Python:1": {
+	// 		"version": "latest"
+	// 	}
+	// },
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// "postCreateCommand": "pip3 install --user -r requirements.txt",
+
+	"customizations": {
+		// Configure properties specific to VS Code.
+		"vscode": {
+			// Set *default* container specific settings.json values on container create.
+			// "settings": { 
+			// 	"python.defaultInterpreterPath": "/usr/local/bin/python",
+			// 	"python.linting.enabled": true,
+			// 	"python.linting.pylintEnabled": true,
+			// 	"python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
+			// 	"python.formatting.blackPath": "/usr/local/py-utils/bin/black",
+			// 	"python.formatting.yapfPath": "/usr/local/py-utils/bin/yapf",
+			// 	"python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
+			// 	"python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
+			// 	"python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
+			// 	"python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
+			// 	"python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
+			// 	"python.linting.pylintPath": "/usr/local/py-utils/bin/pylint"
+			// },
+			
+			// Add the IDs of extensions you want installed when the container is created.
+			"extensions": [
+				"L13RARY.l13-diff",
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-azuretools.vscode-docker",
+				"mechatroner.rainbow-csv",
+				"ms-toolsai.jupyter",
+				"ms-toolsai.jupyter-keymap",
+				"ms-python.black-formatter",
+				"GitHub.copilot",
+				"GitHub.copilot-chat",
+				"ms-vscode.cpptools",
+				"chiehyu.vscode-astyle",
+				"ms-vscode.cpptools-extension-pack"
+			]
+		}
+	},
+	"runArgs": [
+		// "--gpus", "all",
+		"--privileged=true",
+		"--network=host",
+		"--volume=/tmp/.X11-unix:/tmp/.X11-unix",
+		"--volume=/dev:/dev",
+		"--volume=/dev/snd:/dev/snd",
+		"--env=DISPLAY=${localEnv:DISPLAY}",
+		"--device=/dev/dri:/dev/dri",
+		"--device=/dev/snd:/dev/snd",
+		"--device=/dev/shm:/dev/shm",
+		"-e", "XAUTHORITY",
+		"-e", "XDG_SESSION_TYPE=wayland",
+		"--volume=${localEnv:XAUTHORITY}:${localEnv:XAUTHORITY}",
+		"-e", "ALSA_CARD=Generic"
+ 	]
+}
