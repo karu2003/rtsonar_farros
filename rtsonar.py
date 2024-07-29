@@ -29,13 +29,13 @@ def play_audio( Qout, p, fs, stop_flag, dev=None):
     # play audio
     while ( not stop_flag.is_set()):
         data = Qout.get()
-        if data is "EOT" :
+        if data == "EOT" :
             break
         try:
-            ostream.write( data.astype(np.float32).tostring() )
+            ostream.write( data.astype(np.float32).tobytes() )
         except:
             break
-    ostream.stop_stream();
+    ostream.stop_stream()
     ostream.close()
             
 def record_audio( Qin, p, fs, stop_flag, dev=None,chunk=2048):
@@ -43,7 +43,7 @@ def record_audio( Qin, p, fs, stop_flag, dev=None,chunk=2048):
 
     # record audio in chunks and append to frames
     ct = 0
-    frames = [];
+    frames = []
     while (  not stop_flag.is_set() ):
         try:  # when the pyaudio object is destroyed, stops
             data_str = istream.read(chunk,exception_on_overflow=False) # read a chunk of data
@@ -52,9 +52,9 @@ def record_audio( Qin, p, fs, stop_flag, dev=None,chunk=2048):
             print("Count is ",ct)
             print("Unexpected error:", sys.exc_info()[0])
             break
-        data_flt = np.fromstring( data_str, 'float32' ) # convert string to float
+        data_flt = np.frombuffer( data_str, 'float32' ) # convert string to float
         Qin.put( data_flt ) # append to list
-    istream.stop_stream();
+    istream.stop_stream()
     istream.close()
     Qin.put("EOT")
 
@@ -79,24 +79,24 @@ def signal_process( Qin, Qdata, pulse_a, Nseg, Nplot, fs, maxdist, temperature, 
     dist2time = functions[4]
     
     # initialize Xrcv 
-    Xrcv = zeros( 3 * Nseg, dtype='complex' );
+    Xrcv = zeros( 3 * Nseg, dtype='complex' )
     cur_idx = 0; # keeps track of current index
-    found_delay = False;
+    found_delay = False
     maxsamp = min(int(dist2time( maxdist, temperature) * fs), Nseg); # maximum samples corresponding to maximum distance
     
     while(  not stop_flag.is_set() ):
         
         # Get streaming chunk
-        chunk = Qin.get();
-        if (chunk is "EOT"):
-            break;
+        chunk = Qin.get()
+        if (chunk == "EOT"):
+            break
         Xchunk =  crossCorr( chunk, pulse_a ) 
         Xchunk = np.reshape(Xchunk,(1,len(Xchunk)))
         
         # Overlap-and-add
         # If chunk is empty, add zeros
         try:
-            Xrcv[cur_idx:(cur_idx+len(chunk)+len(pulse_a)-1)] += Xchunk[0,:];
+            Xrcv[cur_idx:(cur_idx+len(chunk)+len(pulse_a)-1)] += Xchunk[0,:]
         except:
             1
             #print("empty audio stream. Skipping.")
@@ -107,10 +107,10 @@ def signal_process( Qin, Qdata, pulse_a, Nseg, Nplot, fs, maxdist, temperature, 
             # If delay has been found once (elif statement below) keep finding
             # This fixes drift on raspberry pi, but slows things down
             if found_delay:
-                idx = findDelay( abs(Xrcv), Nseg );
-                Xrcv = np.roll(Xrcv, -idx );
-                Xrcv[-idx:] = 0;
-                cur_idx = cur_idx - idx;
+                idx = findDelay( abs(Xrcv), Nseg )
+                Xrcv = np.roll(Xrcv, -idx )
+                Xrcv[-idx:] = 0
+                cur_idx = cur_idx - idx
             
             # crop a segment from Xrcv and interpolate to Nplot
             # Divide by peak value (index 0), or a non-zero number in case audio buffer is empty
@@ -119,19 +119,19 @@ def signal_process( Qin, Qdata, pulse_a, Nseg, Nplot, fs, maxdist, temperature, 
             Xrcv_seg = interp( r_[:maxsamp-1:(Nplot*1j)] )
             
             # remove segment from Xrcv
-            Xrcv = np.roll(Xrcv, -Nseg );
+            Xrcv = np.roll(Xrcv, -Nseg )
             Xrcv[-Nseg:] = 0
-            cur_idx = cur_idx - Nseg;
+            cur_idx = cur_idx - Nseg
             
-            Qdata.put( Xrcv_seg );
+            Qdata.put( Xrcv_seg )
             #Qdata.put(np.abs(Xchunk));
             
         elif( cur_idx > 2 * Nseg ):
             # Uses two pulses to calculate delay
-            idx = findDelay( abs(Xrcv), Nseg );
-            Xrcv = np.roll(Xrcv, -idx );
-            Xrcv[-idx:] = 0;
-            cur_idx = cur_idx - idx - 1;
+            idx = findDelay( abs(Xrcv), Nseg )
+            Xrcv = np.roll(Xrcv, -idx )
+            Xrcv[-idx:] = 0
+            cur_idx = cur_idx - idx - 1
             found_delay = True
              
     Qdata.put("EOT")
@@ -140,33 +140,33 @@ def signal_process( Qin, Qdata, pulse_a, Nseg, Nplot, fs, maxdist, temperature, 
 def image_update( Qdata, fig, Nrep, Nplot, stop_flag):
     renderer = fig.select(dict(name='echos', type=GlyphRenderer))
     source = renderer[0].data_source
-    img = source.data['image'][0];
+    img = source.data['image'][0]
     
     while(  not stop_flag.is_set() ):
-        new_line = Qdata.get();
+        new_line = Qdata.get()
         #new_line = np.uint8(new_line/np.max(new_line)*255)
         
-        if new_line is "EOT" :
+        if new_line == "EOT" :
             break
        
         #print(np.percentile(new_line,99))
         #print(np.max(new_line))
         # Normalize to some percentile instead of max, prevent divide by 0 and apply gamma to help see dim peaks
         new_line = np.minimum(new_line/np.maximum(np.percentile(new_line,97),1e-5),1)**(1/1.8)
-        img = np.roll( img, 1, 0);
+        img = np.roll( img, 1, 0)
         view = img.view(dtype=np.uint8).reshape((Nrep, Nplot, 4))
-        view[0,:,:] = cm.jet(new_line)*255;
+        view[0,:,:] = cm.jet(new_line)*255
     
         source.data['image'] = [img]
         push_notebook()
-        Qdata.queue.clear();
+        Qdata.queue.clear()
         
     
 
         
 def rtsonar( f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functions ):
 
-    clear_output();
+    clear_output()
     genChirpPulse = functions[0]
     genPulseTrain = functions[1]
     
@@ -188,7 +188,7 @@ def rtsonar( f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functi
     # create black image
     img = np.zeros((Nrep,Nplot), dtype=np.uint32)
     view = img.view(dtype=np.uint8).reshape((Nrep, Nplot, 4))
-    view[:,:,3] = 255;
+    view[:,:,3] = 255
     
     # initialize plot
     fig = bk.figure(title = 'Sonar',  y_axis_label = "Time [s]", x_axis_label = "Distance [cm]",
