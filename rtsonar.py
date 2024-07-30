@@ -11,6 +11,8 @@ from bokeh.models import GlyphRenderer
 from bokeh.io import push_notebook
 from IPython.display import clear_output
 import sys
+from queue import Queue
+from threading import Event
 
 bk.output_notebook(INLINE)
 
@@ -25,8 +27,17 @@ def put_data(Qout, ptrain, Twait, stop_flag):
     Qout.put("EOT")
 
 
-def play_audio(Qout, p, fs, stop_flag, dev=None):
-    # open output stream
+def play_audio(Qout: Queue, p: pyaudio.PyAudio, fs: float, stop_flag: Event, dev: int = None) -> None:
+    """
+    Функция для воспроизведения аудио из очереди Qout.
+
+    :param Qout: Очередь с аудиоданными.
+    :param p: Экземпляр PyAudio.
+    :param fs: Частота дискретизации.
+    :param stop_flag: Флаг для остановки воспроизведения.
+    :param dev: Индекс выходного устройства (по умолчанию None).
+    """
+    # Открыть выходной поток
     ostream = p.open(
         format=pyaudio.paFloat32,
         channels=1,
@@ -34,15 +45,19 @@ def play_audio(Qout, p, fs, stop_flag, dev=None):
         output=True,
         output_device_index=dev,
     )
-    # play audio
+    
+    # Воспроизведение аудио
     while not stop_flag.is_set():
         data = Qout.get()
-        if data == "EOT":
+        if isinstance(data, str) and data == "EOT":
             break
         try:
-            ostream.write(data.astype(np.float32).tobytes())
-        except:
+            if isinstance(data, np.ndarray):
+                ostream.write(data.astype(np.float32).tobytes())
+        except IOError:
             break
+    
+    # Остановить и закрыть поток
     ostream.stop_stream()
     ostream.close()
 

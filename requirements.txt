@@ -18,3 +18,4 @@ tensorflow
 scikit-learn
 pyfftw
 pyaudio
+sounddevice

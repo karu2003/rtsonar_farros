@@ -73,6 +73,7 @@
 		"-e", "XAUTHORITY",
 		"-e", "XDG_SESSION_TYPE=wayland",
 		"--volume=${localEnv:XAUTHORITY}:${localEnv:XAUTHORITY}",
-		"-e", "ALSA_CARD=Generic"
+		// "-e", "ALSA_CARD=Generic",
+		"-e", "ALSA_CARD=Device"
  	]
 }
