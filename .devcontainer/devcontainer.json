@@ -1,12 +1,12 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/python
 {
-	"name": "signal-processing",
+	"name": "docker_audio",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	// "image": "mcr.microsoft.com/devcontainers/python:0-3.11"
-	"build": { "dockerfile": "Dockerfile",
-			   "context": ".."
-			 },
+	"image": "docker_audio:latest",
+	// "build": { "dockerfile": "Dockerfile",
+	// 		   "context": ".."
+	// 		 },
 	
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
@@ -73,7 +73,11 @@
 		"-e", "XAUTHORITY",
 		"-e", "XDG_SESSION_TYPE=wayland",
 		"--volume=${localEnv:XAUTHORITY}:${localEnv:XAUTHORITY}",
-		// "-e", "ALSA_CARD=Generic",
-		"-e", "ALSA_CARD=Device"
+		// "-v", "/run/user/1000/pulse/native:/run/user/1000/pulse/native",
+		// "-e", "PULSE_SERVER=unix:/run/user/1000/pulse/native"
+		// "-v", "/run/user/1000/pipewire-0:/tmp/pipewire-0"
+		// "-u", "1000:1000"
+		"-e", "ALSA_CARD=Generic_1"
+		// "-e", "ALSA_CARD=Device"
  	]
 }

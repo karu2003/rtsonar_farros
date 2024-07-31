@@ -125,10 +125,11 @@ def signal_process(
 
         # Get streaming chunk
         chunk = Qin.get()
-        if chunk == "EOT":
+        if isinstance(chunk, str) and chunk == "EOT":
             break
-        Xchunk = crossCorr(chunk, pulse_a)
-        Xchunk = np.reshape(Xchunk, (1, len(Xchunk)))
+        if isinstance(chunk, np.ndarray):
+            Xchunk = crossCorr(chunk, pulse_a)
+            Xchunk = np.reshape(Xchunk, (1, len(Xchunk)))
 
         # Overlap-and-add
         # If chunk is empty, add zeros
