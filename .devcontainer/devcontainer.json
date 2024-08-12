@@ -55,7 +55,8 @@
 				"GitHub.copilot-chat",
 				"ms-vscode.cpptools",
 				"chiehyu.vscode-astyle",
-				"ms-vscode.cpptools-extension-pack"
+				"ms-vscode.cpptools-extension-pack",
+				"ms-toolsai.jupyter"
 			]
 		}
 	},
@@ -72,12 +73,13 @@
 		"--device=/dev/shm:/dev/shm",
 		"-e", "XAUTHORITY",
 		"-e", "XDG_SESSION_TYPE=wayland",
+		"-p", "8888:8888",
 		"--volume=${localEnv:XAUTHORITY}:${localEnv:XAUTHORITY}",
 		// "-v", "/run/user/1000/pulse/native:/run/user/1000/pulse/native",
 		// "-e", "PULSE_SERVER=unix:/run/user/1000/pulse/native"
 		// "-v", "/run/user/1000/pipewire-0:/tmp/pipewire-0"
 		// "-u", "1000:1000"
-		"-e", "ALSA_CARD=Generic_1"
-		// "-e", "ALSA_CARD=Device"
+		// "-e", "ALSA_CARD=Generic_1"
+		"-e", "ALSA_CARD=Device"
  	]
 }

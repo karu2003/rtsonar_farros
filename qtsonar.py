@@ -2,7 +2,7 @@ import sys
 import select
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtWidgets
-from sonar import RealTimeSonar
+from sonar_io import RealTimeSonar
 import numpy as np
 
 def visualize(sonar):

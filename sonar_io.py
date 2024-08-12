@@ -1,6 +1,6 @@
 import numpy as np
 from scipy import signal, interpolate
-import threading
+import asyncio
 import queue
 import pyaudio
 import time
@@ -17,9 +17,9 @@ class RealTimeSonar:
         self.Nplot = Nplot
         self.maxdist = maxdist
         self.temperature = temperature
-        self.Qin, self.Qout, self.Qdata = queue.Queue(), queue.Queue(), queue.Queue()
+        self.Qout, self.Qdata = queue.Queue(), queue.Queue()
+        self.stop_flag = asyncio.Event()
         self.p = pyaudio.PyAudio()
-        self.stop_flag = threading.Event()
 
     def genChirpPulse(self):
         Npulse, f0, f1, fs = self.Npulse, self.f0, self.f1, self.fs
@@ -41,14 +41,14 @@ class RealTimeSonar:
         velocity_of_sound = 331.5 * np.sqrt(1 + self.temperature / 273.15) * 100
         return (dist / velocity_of_sound) * 2
 
-    def put_data(self, ptrain, Twait):
+    async def put_data(self, ptrain, Twait):
         while not self.stop_flag.is_set():
             if self.Qout.qsize() < 2:
                 self.Qout.put(ptrain)
-            time.sleep(Twait)
+            await asyncio.sleep(Twait)
         self.Qout.put(None)
 
-    def play_audio(self, fs, dev=None):
+    async def play_audio(self, fs, dev=None):
         ostream = self.p.open(format=pyaudio.paFloat32, channels=1, rate=int(fs), output=True, output_device_index=dev)
         while not self.stop_flag.is_set():
             data = self.Qout.get()
@@ -58,28 +58,28 @@ class RealTimeSonar:
         ostream.stop_stream()
         ostream.close()
 
-    def record_audio(self, fs, dev=None, chunk=2048):
+    async def record_audio(self, fs, dev=None, chunk=2048):
         istream = self.p.open(format=pyaudio.paFloat32, channels=1, rate=int(fs), input=True, input_device_index=dev, frames_per_buffer=chunk)
         while not self.stop_flag.is_set():
             try:
                 data_str = istream.read(chunk, exception_on_overflow=False)
                 data_flt = np.frombuffer(data_str, dtype="float32")
-                self.Qin.put(data_flt)
+                self.Qdata.put(data_flt)
             except Exception as e:
                 print(f"Unexpected error in recording: {e}")
                 break
         istream.stop_stream()
         istream.close()
-        self.Qin.put(None)
+        self.Qdata.put(None)
 
-    def signal_process(self, pulse_a):
-        Nseg, Nplot, fs, maxdist, temperature = self.Nseg, self.Nplot, self.fs, self.maxdist, self.temperature
+    async def signal_process(self, pulse_a):
+        Nseg, Nplot, fs, maxdist = self.Nseg, self.Nplot, self.fs, self.maxdist
         Xrcv = np.zeros(3 * Nseg, dtype="complex")
         cur_idx, found_delay = 0, False
         maxsamp = min(int(self.dist2time(maxdist) * fs), Nseg)
 
         while not self.stop_flag.is_set():
-            chunk = self.Qin.get()
+            chunk = await asyncio.to_thread(self.Qdata.get)
             if chunk is None:
                 break
             Xchunk = self.crossCorr(chunk, pulse_a)
@@ -111,39 +111,16 @@ class RealTimeSonar:
 
         self.Qdata.put(None)
 
-    def start(self):
-        pulse_a = self.genChirpPulse()
-        hanWin = np.hanning(self.Npulse)
-        pulse_a *= hanWin
-        ptrain = self.genPulseTrain(np.real(pulse_a))
-        
-        threads = [
-            threading.Thread(target=self.put_data, args=(ptrain, self.Nseg / self.fs * 3)),
-            threading.Thread(target=self.signal_process, args=(pulse_a,)),
-        ]
-        for t in threads:
-            t.start()
-
-        return threads
-
-    def stop(self):
-        self.stop_flag.set()
-        self.p.terminate()
-
-    def join_threads(self, threads):
-        for t in threads:
-            t.join()
-
-    def update_plot(self, Qplot, stop_flag, Nplot):
+    async def update_plot(self, Nplot):
         plt.ion()  # Enable interactive mode
         fig, ax = plt.subplots()
         ax.set_xlabel("Sample Index")
         ax.set_ylabel("Amplitude")
         line, = ax.plot(np.zeros(Nplot))
 
-        while not stop_flag.is_set():
-            if not Qplot.empty():
-                chunk = Qplot.get()
+        while not self.stop_flag.is_set():
+            if not self.Qdata.empty():
+                chunk = self.Qdata.get()
                 if chunk is None:
                     break
                 if len(chunk) != Nplot:
@@ -158,15 +135,26 @@ class RealTimeSonar:
         plt.ioff()  # Disable interactive mode
         plt.show()  # Show plot after updating
 
-    def start_audio_streams(self):
-        # Start audio streams directly from the main thread
-        play_thread = threading.Thread(target=self.play_audio, args=(self.fs,))
-        record_thread = threading.Thread(target=self.record_audio, args=(self.fs,))
+    async def start(self):
+        pulse_a = self.genChirpPulse()
+        hanWin = np.hanning(self.Npulse)
+        pulse_a *= hanWin
+        ptrain = self.genPulseTrain(np.real(pulse_a))
+        
+        # Create tasks
+        tasks = [
+            asyncio.create_task(self.put_data(ptrain, self.Nseg / self.fs * 3)),
+            asyncio.create_task(self.record_audio(self.fs)),
+            asyncio.create_task(self.play_audio(self.fs)),
+            asyncio.create_task(self.signal_process(pulse_a)),
+            # asyncio.create_task(self.update_plot(self.Nplot)),
+        ]
+        
+        await asyncio.gather(*tasks)
 
-        play_thread.start()
-        record_thread.start()
-
-        return [play_thread, record_thread]
+    def stop(self):
+        self.stop_flag.set()
+        self.p.terminate()
 
 # Parameters for example usage
 fs = 48000
@@ -179,22 +167,14 @@ Nplot = 256
 maxdist = 100
 temperature = 20
 
-if __name__ == "__main__":
+async def main():
     sonar = RealTimeSonar(f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature)
+    try:
+        await sonar.start()
+    except KeyboardInterrupt:
+        print("Stopping due to keyboard interrupt")
+    finally:
+        sonar.stop()
 
-    # Start audio streams from the main thread
-    audio_threads = sonar.start_audio_streams()
-
-    # Start processing and data handling in separate threads
-    processing_threads = sonar.start()
-
-    # Start the update plot in a separate thread
-    plot_thread = threading.Thread(target=sonar.update_plot, args=(sonar.Qdata, sonar.stop_flag, sonar.Nplot))
-    plot_thread.start()
-
-    # Wait for processing and plot threads to complete
-    sonar.join_threads(processing_threads)
-    plot_thread.join()
-
-    # Wait for audio threads to complete
-    sonar.join_threads(audio_threads)
+if __name__ == "__main__":
+    asyncio.run(main())

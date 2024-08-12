@@ -8,13 +8,20 @@ import threading, time, queue, pyaudio
 import bokeh.plotting as bk
 from bokeh.resources import INLINE
 from bokeh.models import GlyphRenderer
-from bokeh.io import push_notebook
-from IPython.display import clear_output
+from bokeh.plotting import figure
+from bokeh.models import ColumnDataSource, GlyphRenderer
+from bokeh.io import output_notebook, push_notebook, show
+
+# from IPython.display import clear_output
 import sys
 from queue import Queue
 from threading import Event
 
-bk.output_notebook(INLINE)
+
+from matplotlib.cm import viridis
+
+output_notebook(INLINE)
+# output_notebook()
 
 
 def put_data(Qout, ptrain, Twait, stop_flag):
@@ -27,7 +34,9 @@ def put_data(Qout, ptrain, Twait, stop_flag):
     Qout.put("EOT")
 
 
-def play_audio(Qout: Queue, p: pyaudio.PyAudio, fs: float, stop_flag: Event, dev: int = None) -> None:
+def play_audio(
+    Qout: Queue, p: pyaudio.PyAudio, fs: float, stop_flag: Event, dev: int = None
+) -> None:
     """
     Функция для воспроизведения аудио из очереди Qout.
 
@@ -45,7 +54,7 @@ def play_audio(Qout: Queue, p: pyaudio.PyAudio, fs: float, stop_flag: Event, dev
         output=True,
         output_device_index=dev,
     )
-    
+
     # Воспроизведение аудио
     while not stop_flag.is_set():
         data = Qout.get()
@@ -56,7 +65,7 @@ def play_audio(Qout: Queue, p: pyaudio.PyAudio, fs: float, stop_flag: Event, dev
                 ostream.write(data.astype(np.float32).tobytes())
         except IOError:
             break
-    
+
     # Остановить и закрыть поток
     ostream.stop_stream()
     ostream.close()
@@ -85,7 +94,7 @@ def record_audio(Qin, p, fs, stop_flag, dev=None, chunk=2048):
             print("Count is ", ct)
             print("Unexpected error:", sys.exc_info()[0])
             break
-        data_flt = np.frombuffer(data_str, "float32")  # convert string to float
+        data_flt = np.fromstring(data_str, "float32")  # convert string to float
         Qin.put(data_flt)  # append to list
     istream.stop_stream()
     istream.close()
@@ -115,11 +124,11 @@ def signal_process(
 
     # initialize Xrcv
     Xrcv = zeros(3 * Nseg, dtype="complex")
-    cur_idx = 0
-    # keeps track of current index
+    cur_idx = 0  # keeps track of current index
     found_delay = False
-    maxsamp = min(int(dist2time(maxdist, temperature) * fs), Nseg)
-    # maximum samples corresponding to maximum distance
+    maxsamp = min(
+        int(dist2time(maxdist, temperature) * fs), Nseg
+    )  # maximum samples corresponding to maximum distance
 
     while not stop_flag.is_set():
 
@@ -138,7 +147,7 @@ def signal_process(
         except:
             1
             # print("empty audio stream. Skipping.")
-            # Xrcv[cur_idx:(cur_idx+len(chunk)+len(pulse_a)-1)] += Xchunk[0,:];
+            # Xrcv[cur_idx:(cur_idx+len(chunk)+len(pulse_a)-1)] += Xchunk[0,:]
 
         cur_idx += len(chunk)
         if found_delay and (cur_idx >= Nseg):
@@ -164,11 +173,12 @@ def signal_process(
             cur_idx = cur_idx - Nseg
 
             Qdata.put(Xrcv_seg)
-            # Qdata.put(np.abs(Xchunk));
+            # Qdata.put(np.abs(Xchunk))
 
         elif cur_idx > 2 * Nseg:
             # Uses two pulses to calculate delay
             idx = findDelay(abs(Xrcv), Nseg)
+            print("Delay is ", idx)
             Xrcv = np.roll(Xrcv, -idx)
             Xrcv[-idx:] = 0
             cur_idx = cur_idx - idx - 1
@@ -178,35 +188,42 @@ def signal_process(
 
 
 def image_update(Qdata, fig, Nrep, Nplot, stop_flag):
+    from matplotlib.cm import viridis
+
     renderer = fig.select(dict(name="echos", type=GlyphRenderer))
     source = renderer[0].data_source
     img = source.data["image"][0]
 
     while not stop_flag.is_set():
-        new_line = Qdata.get()
-        # new_line = np.uint8(new_line/np.max(new_line)*255)
+        try:
+            new_line = Qdata.get(
+                timeout=1
+            )  # Таймаут для периодической проверки stop_flag
+        except queue.Empty:
+            continue
 
-        if new_line == "EOT":
+        if isinstance(new_line, str) and new_line == "EOT":
+            print("End of transmission")
             break
 
-        # print(np.percentile(new_line,99))
-        # print(np.max(new_line))
-        # Normalize to some percentile instead of max, prevent divide by 0 and apply gamma to help see dim peaks
-        new_line = np.minimum(
-            new_line / np.maximum(np.percentile(new_line, 97), 1e-5), 1
-        ) ** (1 / 1.8)
-        img = np.roll(img, 1, 0)
-        view = img.view(dtype=np.uint8).reshape((Nrep, Nplot, 4))
-        view[0, :, :] = cm.jet(new_line) * 255
+        if isinstance(new_line, np.ndarray):
+            # new_line = np.minimum(
+            #     new_line / np.maximum(np.percentile(new_line, 97), 1e-5), 1
+            # ) ** (1 / 1.8)
 
-        source.data["image"] = [img]
-        push_notebook()
-        Qdata.queue.clear()
+            img = np.roll(img, 1, 0)
+            view = img.view(dtype=np.uint8).reshape((Nrep, Nplot, 4))
+            view[0, :, :] = cm.jet(new_line) * 255
+
+            source.data["image"] = [img]
+            push_notebook()
+            Qdata.queue.clear()
+
 
 
 def rtsonar(f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functions):
 
-    clear_output()
+    # clear_output()
     genChirpPulse = functions[0]
     genPulseTrain = functions[1]
 
@@ -224,6 +241,7 @@ def rtsonar(f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functio
 
     # create a pyaudio object
     p = pyaudio.PyAudio()
+    dev = None  # device index (None = default device)
 
     # create black image
     img = np.zeros((Nrep, Nplot), dtype=np.uint32)
@@ -231,7 +249,7 @@ def rtsonar(f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functio
     view[:, :, 3] = 255
 
     # initialize plot
-    fig = bk.figure(
+    fig = figure(
         title="Sonar",
         y_axis_label="Time [s]",
         x_axis_label="Distance [cm]",
@@ -243,7 +261,18 @@ def rtsonar(f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functio
     fig.image_rgba(
         image=[img], x=[0], y=[0], dw=[maxdist], dh=[Nrep * Nseg / fs], name="echos"
     )
-    bk.show(fig, notebook_handle=True)  # add notebook_handle=True to make it update
+    # fig.image( # Использование другой цветовой схемы
+    #     image=[img],
+    #     x=[0],
+    #     y=[0],
+    #     dw=[maxdist],
+    #     dh=[Nrep * Nseg / fs],
+    #     name="echos",
+    #     palette="Viridis256",
+    # )
+    handle = show(
+        fig, notebook_handle=True
+    )  # add notebook_handle=True to make it update
 
     # initialize stop_flag
     stop_flag = threading.Event()
@@ -252,8 +281,10 @@ def rtsonar(f0, f1, fs, Npulse, Nseg, Nrep, Nplot, maxdist, temperature, functio
     t_put_data = threading.Thread(
         target=put_data, args=(Qout, ptrain, Nseg / fs * 3, stop_flag)
     )
-    t_rec = threading.Thread(target=record_audio, args=(Qin, p, fs, stop_flag))
-    t_play_audio = threading.Thread(target=play_audio, args=(Qout, p, fs, stop_flag))
+    t_rec = threading.Thread(target=record_audio, args=(Qin, p, fs, stop_flag, dev))
+    t_play_audio = threading.Thread(
+        target=play_audio, args=(Qout, p, fs, stop_flag, dev)
+    )
     t_signal_process = threading.Thread(
         target=signal_process,
         args=(
